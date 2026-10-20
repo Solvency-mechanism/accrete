@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#06101c" />
+    <title>Accrete</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="mark-asterwake" viewBox="0 0 48 48">
+        <circle cx="24" cy="24" r="9" fill="currentColor" opacity=".18" />
+        <circle cx="24" cy="24" r="9" />
+        <ellipse cx="24" cy="24" rx="21" ry="11" transform="rotate(-32 24 24)" />
+        <path d="M34 6v7m-3.5-3.5h7M8 33l-4 5m7-3-5 1" />
+        <circle cx="11" cy="15" r="2.5" fill="currentColor" stroke="none" />
+      </symbol>
+      <symbol id="mark-warden" viewBox="0 0 48 48">
+        <circle cx="24" cy="24" r="8" fill="currentColor" opacity=".22" />
+        <circle cx="24" cy="24" r="8" />
+        <path d="M40 17a18 18 0 0 1-22 24M8 31a18 18 0 0 1 22-24" />
+        <path d="m35 10 5 3-3 5-5-3z" fill="currentColor" />
+        <path d="M9 34l-4 4 4 4 4-4z" fill="currentColor" />
+      </symbol>
+      <symbol id="mark-harvester" viewBox="0 0 48 48">
+        <path d="m40 8-9 29-7-13-13-7z" fill="currentColor" opacity=".2" />
+        <path d="m40 8-9 29-7-13-13-7zM24 24 40 8M8 28l9-3M20 40l3-9M7 41l10-10" />
+      </symbol>
+      <symbol id="mark-charger" viewBox="0 0 32 32">
+        <path d="m16 4 11 23-11-5-11 5zM16 11v10" />
+      </symbol>
+      <symbol id="mark-guard" viewBox="0 0 32 32">
+        <path d="M9 26a13 13 0 1 1 14 0M12 22a8 8 0 1 1 8 0" />
+        <circle cx="16" cy="14" r="3" fill="currentColor" stroke="none" />
+      </symbol>
+      <symbol id="mark-scavenger" viewBox="0 0 32 32">
+        <path d="m16 5 7 11-7 11-7-11zM5 10l-3 6 3 6M27 10l3 6-3 6" />
+        <path d="m16 12 3 4-3 4-3-4z" fill="currentColor" />
+      </symbol>
+      <symbol id="mark-launch" viewBox="0 0 24 24">
+        <path d="M5 19 19 5M7 5h12v12M4 12v8h8" />
+      </symbol>
+      <symbol id="mark-direction" viewBox="0 0 24 24">
+        <path d="m5 15 7-7 7 7M12 8v12" />
+      </symbol>
+    </svg>
+    <main id="app">
+      <header class="masthead">
+        <a class="wordmark" href="./" aria-label="Accrete home"
+          ><svg class="orbit-mark" aria-hidden="true"><use href="#mark-asterwake" /></svg> Accrete</a
+        >
+        <!-- One span per form, in campaign order, written by src/app/main.js from the campaign descriptor. -->
+        <div class="route" id="route" aria-label="Evolution route"></div>
+        <button id="pause" class="quiet" aria-label="Pause and settings">
+          Settings <kbd>Esc</kbd>
+        </button>
+      </header>
+      <section class="arena" aria-label="Game">
+        <canvas
+          id="game"
+          width="1280"
+          height="720"
+          tabindex="-1"
+          inert
+          aria-label="Celestial arena. Move with WASD or arrows, aim with the mouse, and use Space for your identity command."
+        ></canvas>
+        <div class="hud" id="hud" hidden>
+          <div class="hud-left">
+            <p class="small" id="encounter-label"></p>
+            <h2 id="form-label"></h2>
+            <div class="meter growth"><span id="growth-fill"></span></div>
+            <p class="small" id="growth-label"></p>
+          </div>
+          <div class="hud-right">
+            <p id="identity-label"></p>
+            <div class="meter health"><span id="health-fill"></span></div>
+            <p class="small" id="health-label"></p>
+            <p class="small" id="composition-label"></p>
+            <p class="small" id="traits-label"></p>
+          </div>
+          <div class="objective">
+            <span id="objective-label"></span>
+            <div class="route-progress" role="group" aria-label="Alternative exits">
+              <span id="slalom-progress"></span
+              ><span id="combat-progress"></span
+              ><span id="exit-progress"></span>
+            </div>
+          </div>
+          <div class="command-hud">
+            <kbd>Space</kbd
+            ><span
+              ><strong id="command-label"></strong
+              ><small id="command-detail"></small
+            ></span>
+          </div>
+          <div class="threat-hud" id="threat-label"></div>
+          <div class="encounter-notice" id="encounter-notice" hidden>
+            <strong id="notice-title"></strong><span id="notice-detail"></span>
+          </div>
+          <!-- Inside the field, so they are always on screen while playing. -->
+          <div class="hud-lines">
+            <p id="hint" class="first-hint" role="status" aria-live="polite"></p>
+            <p id="captions" class="sound-captions" role="log" aria-live="polite" aria-label="Sound captions"></p>
+          </div>
+          <button class="capture-button" id="capture" hidden>
+            Inspect nearby moon <kbd>E</kbd>
+          </button>
+        </div>
+        <section class="overlay intro" id="intro" aria-label="Start expedition">
+          <div class="intro-panel">
+            <p class="chapter">The living field</p>
+            <h1>A way to grow.<br />A way to survive.</h1>
+            <p class="lede">
+              Crack drifting ore. Chase a river of matter. Ride the shear and
+              thread the transit through a restless system. Grow from a dwarf
+              planet into a giant, with one lasting strategy.
+            </p>
+            <fieldset class="identities">
+              <legend>Choose your identity</legend>
+              <button
+                class="identity selected"
+                data-identity="warden"
+                aria-pressed="true"
+              >
+                <svg class="identity-symbol" aria-hidden="true"><use href="#mark-warden" /></svg
+                ><span
+                  ><strong>Orbital Warden</strong
+                  ><small>Shape your orbit. Intercept or collect.</small></span
+                ></button
+              ><button
+                class="identity"
+                data-identity="harvester"
+                aria-pressed="false"
+              >
+                <svg class="identity-symbol" aria-hidden="true"><use href="#mark-harvester" /></svg
+                ><span
+                  ><strong>Impact Harvester</strong
+                  ><small>Choose your line. Commit to contact.</small></span
+                ></button
+              ><button
+                class="unbound"
+                data-identity="unbound"
+                aria-pressed="false"
+              >
+                Unbound · a movement-only challenge
+              </button>
+            </fieldset>
+            <fieldset class="fields">
+              <legend>Choose the field</legend>
+              <div class="field-choices">
+                <button class="field-choice selected" data-field="deep" aria-pressed="true">
+                  <strong>Deep field</strong><small>An open star system. Everything drifts; stars, giants and black holes pull on it all.</small>
+                </button><button class="field-choice" data-field="classic" aria-pressed="false">
+                  <strong>Classic arena</strong><small>The original single-screen field.</small>
+                </button>
+              </div>
+            </fieldset>
+            <div class="identity-preview">
+              <p id="identity-description"></p>
+              <p id="identity-cost"></p>
+              <p class="successor" id="identity-successor"></p>
+              <button class="text-button" id="preview-command">
+                Preview formation</button
+              ><span id="preview-caption"></span>
+            </div>
+            <div class="start-row">
+              <button class="primary" id="start">
+                Begin expedition <svg class="launch-mark" aria-hidden="true"><use href="#mark-launch" /></svg></button
+              ><!-- Shown when saved settings cannot be kept (src/app/storage.js); written by src/app/main.js. -->
+              <p class="storage-notice" id="storage-notice" role="status" hidden></p>
+            </div>
+            <details class="practice">
+              <summary>Practice a specific encounter</summary>
+              <div class="practice-fields">
+                <label>Encounter<select id="arrangement"></select></label
+                ><label
+                  >Form<select id="practice-form"></select></label
+                ><button id="practice-start">Start practice</button>
+              </div>
+            </details>
+          </div>
+          <div class="intro-caption">
+            <span id="preview-form">Dwarf planet</span
+            ><span>Three forms. One lasting identity.</span>
+          </div>
+        </section>
+        <section class="overlay dialog-wrap" id="dialog-wrap" hidden>
+          <div
+            class="dialog"
+            id="dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dialog-title"
+            tabindex="-1"
+          ></div>
+        </section>
+        <!-- The title-screen Settings dialog moves #seed into its Advanced section. -->
+        <div id="seed-home" hidden>
+          <input
+            id="seed"
+            type="number"
+            value="117"
+            min="1"
+            max="999999"
+            aria-label="Layout seed"
+          />
+        </div>
+        <div class="touch-controls" id="touch-controls" hidden>
+          <div class="dpad">
+            <button data-dir="up" aria-label="Move up"><svg aria-hidden="true"><use href="#mark-direction" /></svg></button
+            ><button data-dir="left" aria-label="Move left"><svg aria-hidden="true"><use href="#mark-direction" /></svg></button
+            ><button data-dir="down" aria-label="Move down"><svg aria-hidden="true"><use href="#mark-direction" /></svg></button
+            ><button data-dir="right" aria-label="Move right"><svg aria-hidden="true"><use href="#mark-direction" /></svg></button>
+          </div>
+          <button id="touch-command">Command</button>
+        </div>
+      </section>
+      <footer>
+        <p id="help-line">
+          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move
+          <span>Mouse aim</span><kbd>Space</kbd> command
+          <kbd>E</kbd> inspect moon <kbd>Esc</kbd> pause and settings
+        </p>
+        <p class="legend">
+          <span class="charger-key"><svg aria-hidden="true"><use href="#mark-charger" /></svg>Charger</span
+          ><span class="guard-key"><svg aria-hidden="true"><use href="#mark-guard" /></svg>Guard</span
+          ><span class="scavenger-key"><svg aria-hidden="true"><use href="#mark-scavenger" /></svg>Scavenger</span>
+        </p>
+        <span id="seed-display">Seed 117</span>
+      </footer>
+      <p id="announcer" class="sr-only" role="status" aria-live="polite"></p>
+    </main>
+    <script src="./build-id.js"></script>
+<script type="module" src="./src/app/main.js"></script>
+  </body>
+</html>
