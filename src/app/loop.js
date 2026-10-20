@@ -38,13 +38,17 @@ export function createLoop({ step, state, settings, timeScale, feedback, getSess
     }
     if (state.started && !state.paused && !state.modal && state.world.phase === "playing" && !heldForTransition) {
       state.accumulator = Math.min(state.accumulator + Math.max(0, rawDt) * timeScale.value, 0.1);
-      while (state.accumulator + 1e-9 >= FIXED_STEP && state.world.phase === "playing" && !state.world.player.offer) {
+      // At most four steps a frame: a slow frame then slows the game a little instead of banking more steps for the
+      // next frame, which made it slower still.
+      let steps = 0;
+      while (state.accumulator + 1e-9 >= FIXED_STEP && state.world.phase === "playing" && !state.world.player.offer && steps++ < 4) {
         presentation.beforeStep(state.world);
         step();
         presentation.afterStep(state.world);
         state.accumulator = Math.max(0, state.accumulator - FIXED_STEP);
         consumeEvents(now / 1000);
       }
+      if (steps > 4) state.accumulator = Math.min(state.accumulator, FIXED_STEP);
     } else state.accumulator = 0;
     consumeEvents(now / 1000);
     showPhase();
@@ -81,6 +85,7 @@ export function createLoop({ step, state, settings, timeScale, feedback, getSess
     } else if (renderDue) {
       const alpha = state.paused || state.modal || state.world.phase !== "playing" ? 1 : state.accumulator / FIXED_STEP;
       renderer.render(presentation.sample(state.world, alpha), settings, false, feedback);
+      if (!state.paused && !state.modal && state.world.phase === "playing") renderer.paced?.(realDt);
     }
     if (renderDue) state.lastRender = now;
     const active = state.started && !state.paused && !state.modal && state.world.phase === "playing";

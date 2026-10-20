@@ -1,1 +1,1 @@
-globalThis.ASTERWAKE_BUILD_SHA = "c34b31df25df";
+globalThis.ASTERWAKE_BUILD_SHA = "2b54a7044b3a";

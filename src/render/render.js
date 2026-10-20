@@ -74,6 +74,7 @@ function seeded(seed) {
 }
 export class Renderer {
   constructor(canvas) {
+    this.quality = 1; this.qualityAt = 0; this.frameMs = 0;
     this.camera = new ArenaCamera();
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d", { alpha: false });
@@ -818,7 +819,14 @@ export class Renderer {
     // rides along with the ship. Another world or encounter, or a rewound clock, recomputes at once.
     const now = world.time || 0, key = `${world.seed}:${world.encounterIndex}`, cached = this.coastCache;
     if (!cached || cached.key !== key || now < cached.time || now - cached.time >= 1 / 15) this.coastCache = { key, time: now, x: p.x, y: p.y, ...predictCoast(world) };
-    const { struck, x: ox, y: oy } = this.coastCache, path = this.coastCache.path.map(q => ({ x: q.x + p.x - ox, y: q.y + p.y - oy }));
+    // What is drawn eases toward each new prediction instead of snapping to it (a time constant of about 70 ms, near
+    // the recompute interval), held as offsets from the ship so it stays anchored to the ship as it moves.
+    const { struck, key: shownKey } = this.coastCache, target = this.coastCache.path.map(q => ({ x: q.x - this.coastCache.x, y: q.y - this.coastCache.y }));
+    const at = performance.now(), last = this.coastShown?.key === shownKey && this.coastShown.offsets.length ? this.coastShown : null;
+    const ease = last ? 1 - Math.exp(-Math.min(0.1, (at - last.at) / 1000) / 0.07) : 1;
+    const offsets = target.map((o, i) => { const s = last ? last.offsets[Math.min(i, last.offsets.length - 1)] : o; return { x: s.x + (o.x - s.x) * ease, y: s.y + (o.y - s.y) * ease }; });
+    this.coastShown = { key: shownKey, at, offsets };
+    const path = offsets.map(o => ({ x: p.x + o.x, y: p.y + o.y }));
     const { count } = influence(world, p.x, p.y);
     if (path.length < 2) return;
     const strength = Math.min(1, count / 4), alpha = Math.round((0.62 + strength * 0.38) * 255).toString(16).padStart(2, "0");
@@ -1009,11 +1017,33 @@ export class Renderer {
    * (a star always, by its light); enemies, ore, matter and the comet show only within sensor range; the active gate is
    * a beacon at any range. The faint ring is where the tide begins.
    */
+  /** Where the field map sits, in CSS pixels: bottom right, above the command card the HUD keeps in the corner. */
+  mapBox(world, rect) {
+    const mw = Math.min(220, Math.max(150, rect.width * 0.17)), mh = world.arena.height * (mw / world.arena.width);
+    return { x0: rect.width - mw - 26, y0: Math.max(110, rect.height - mh - 66), mw, mh };
+  }
+  /**
+   * The field map is painted into its own small canvas at most ten times a second and copied onto the frame every
+   * frame: its fog cells grow with exploration, so painting them every frame made the frame rate fall over a run.
+   */
   fieldMap(world, view, rect) {
-    const c = this.ctx, field = fieldOf(world), { width, height } = world.arena, p = world.player, sensor = field.physics.sensor;
-    const mw = Math.min(220, Math.max(150, rect.width * 0.17)), k = mw / width, mh = height * k;
-    // Bottom right, above the command card the HUD keeps in the corner.
-    const x0 = rect.width - mw - 26, y0 = Math.max(110, rect.height - mh - 66);
+    const dpr = this.backing || 1, now = performance.now(), { x0, y0, mw, mh } = this.mapBox(world, rect), pad = 2;
+    const size = `${Math.round(mw)}x${Math.round(mh)}x${dpr}`, cache = this.mapCache;
+    if (!cache || cache.size !== size || now - cache.at >= 100 || now < cache.at) {
+      const canvas = cache?.size === size ? cache.canvas : document.createElement("canvas");
+      canvas.width = Math.ceil((mw + pad * 2) * dpr); canvas.height = Math.ceil((mh + pad * 2) * dpr);
+      const main = this.ctx, off = canvas.getContext("2d");
+      off.setTransform(1, 0, 0, 1, 0, 0); off.clearRect(0, 0, canvas.width, canvas.height);
+      off.setTransform(dpr, 0, 0, dpr, -(x0 - pad) * dpr, -(y0 - pad) * dpr);
+      this.ctx = off;
+      try { this.drawFieldMap(world, view, rect); } finally { this.ctx = main; }
+      this.mapCache = { size, at: now, canvas };
+    }
+    this.ctx.drawImage(this.mapCache.canvas, x0 - pad, y0 - pad, mw + pad * 2, mh + pad * 2);
+  }
+  drawFieldMap(world, view, rect) {
+    const c = this.ctx, field = fieldOf(world), { width } = world.arena, p = world.player, sensor = field.physics.sensor;
+    const { x0, y0, mw, mh } = this.mapBox(world, rect), k = mw / width;
     const clampX = (x) => Math.max(x0 + 2, Math.min(x0 + mw - 2, x)), clampY = (y) => Math.max(y0 + 2, Math.min(y0 + mh - 2, y));
     const at = (x, y) => [clampX(x0 + x * k), clampY(y0 + y * k)];
     const veils = (world.regions || []).filter((r) => REGION_KINDS[r.kind]?.veil && !weight(r, p));
@@ -1385,6 +1415,20 @@ export class Renderer {
       }
     }
   }
+  /**
+   * Frame pacing, from the app's loop while a run is in play: `interval` is the real time since the last frame, in
+   * seconds. When frames run long (an average over 20 ms, under 50 fps) the backing store's resolution steps down, at
+   * most twice a second, to 55% of what the screen asks for; while frames keep pace with a 60 Hz screen (under 17.5 ms)
+   * it steps back up every 3 s, so it settles at the highest resolution that holds the frame rate.
+   * Painting a large canvas, not the simulation, is what limits the frame rate on big or high-density screens.
+   */
+  paced(interval) {
+    const ms = interval * 1000, now = performance.now();
+    if (!(ms > 0 && ms < 250)) return;
+    this.frameMs = this.frameMs ? this.frameMs * 0.92 + ms * 0.08 : ms;
+    if (this.frameMs > 20 && now - this.qualityAt > 500) { this.quality = Math.max(0.55, this.quality - 0.1); this.qualityAt = now; }
+    else if (this.frameMs < 17.5 && this.quality < 1 && now - this.qualityAt > 3000) { this.quality = Math.min(1, this.quality + 0.05); this.qualityAt = now; }
+  }
   render(world, settings = {}, preview = false, feedback = null) {
     Object.assign(this.settings, settings);
     const c = this.ctx,
@@ -1408,7 +1452,9 @@ export class Renderer {
       this.camera.track({ x: p.x + (p.vx || 0) * lead, y: p.y + (p.vy || 0) * lead }, { width: this.span, height: this.span * 9 / 16 }, false);
     } else this.camera.track(null);
     const camera = this.camera.fit(world.arena, rect);
-    const dpr = backingScale(rect);
+    // The backing store's scale, times the quality the frame pacing allows (see `paced`).
+    const dpr = backingScale(rect) * this.quality;
+    this.backing = dpr;
     const bw = Math.max(1, Math.round(rect.width * dpr)), bh = Math.max(1, Math.round(rect.height * dpr));
     if (this.canvas.width !== bw) this.canvas.width = bw;
     if (this.canvas.height !== bh) this.canvas.height = bh;
